@@ -1,4 +1,5 @@
 import pathlib
+import subprocess
 
 import pytest
 
@@ -73,14 +74,49 @@ def test_ignored_directory_is_pruned(tmp_path: pathlib.Path) -> None:
     assert not any(name.startswith("build") for name in result)
 
 
-def test_git_directory_is_always_skipped(tmp_path: pathlib.Path) -> None:
+def test_git_directory_is_never_yielded_and_cannot_be_re_included(tmp_path: pathlib.Path) -> None:
+    """INVARIANT: no ignore rule can put `.git` back into the walk.
+
+    The tool rewrites files in place, so handing it a repository's own object store would corrupt
+    the repository. `.git` is therefore pruned by name before any spec is consulted, rather than
+    living in the baseline exclude spec. Moving it into that spec is what breaks this: excludes sit
+    beneath every real `.gitignore`, so a `!.git` negation anywhere in the tree would re-include it.
+    """
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     (git_dir / "config").write_text("x")
+    (tmp_path / ".gitignore").write_text("!.git\n!.git/**\n")
     (tmp_path / "keep.txt").write_text("x")
     result = _walk(tmp_path)
     assert "keep.txt" in result
     assert not any(name.startswith(".git/") for name in result)
+
+
+def test_ignore_rules_come_only_from_gitignore_files_in_the_tree(tmp_path: pathlib.Path) -> None:
+    """INVARIANT: git state outside the scanned tree never changes what is visited.
+
+    The tool promises to work on any directory, repository or not, and to be reproducible for two
+    people with different machine-level git config. Reading `.git/info/exclude`, the global
+    `core.excludesFile`, or anything else `git check-ignore` would consult breaks that — which is
+    the concrete failure mode behind ADR-0002's choice of pathspec over a nested-gitignore library
+    that pulls in the global ignore by default. Shelling out to git breaks it too, and additionally
+    fails outright on a plain directory.
+    """
+    info = tmp_path / ".git" / "info"
+    info.mkdir(parents=True)
+    (info / "exclude").write_text("*.log\n")
+    (tmp_path / "a.log").write_text("x")
+
+    def _no_subprocess(*args: object, **kwargs: object) -> None:  # pragma: no cover
+        message = f"discovery spawned a subprocess: {args} {kwargs}"
+        raise AssertionError(message)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(subprocess, "Popen", _no_subprocess)
+        patch.setattr(subprocess, "run", _no_subprocess)
+        result = _walk(tmp_path)
+
+    assert "a.log" in result
 
 
 def test_symlinks_are_skipped(tmp_path: pathlib.Path) -> None:

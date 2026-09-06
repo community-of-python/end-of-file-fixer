@@ -32,21 +32,15 @@ jobs:
       # Publisher on the eof-fixer PyPI project (env: pypi, workflow: release.yml).
       - run: just publish
 
-      # Description source: planning/releases/<tag>.md if present (verbatim, no
-      # auto-changelog appended); otherwise GitHub's generated notes. A tag with
-      # a letter (2.0.0rc1) is a pre-release -> flagged so GitHub won't mark it
-      # "Latest".
+      # The Release body is GitHub's generated notes, rendered from the squashed
+      # PR titles since the previous tag — so a conventional-commit title is what
+      # a reader gets. A release wanting prose is edited after the fact with
+      # `gh release edit <tag> --notes-file`. A tag with a letter (2.0.0rc1) is a
+      # pre-release -> flagged so GitHub won't mark it "Latest".
       - name: Resolve release metadata
         id: meta
         run: |
           set -euo pipefail
-          notes="planning/releases/${GITHUB_REF_NAME}.md"
-          if [ -f "$notes" ]; then
-            echo "body_path=$notes" >> "$GITHUB_OUTPUT"
-            echo "generate_notes=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "generate_notes=true" >> "$GITHUB_OUTPUT"
-          fi
           if [[ "$GITHUB_REF_NAME" =~ [a-z] ]]; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
@@ -56,7 +50,6 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          body_path: ${{ steps.meta.outputs.body_path }}
-          generate_release_notes: ${{ steps.meta.outputs.generate_notes }}
+          generate_release_notes: true
           prerelease: ${{ steps.meta.outputs.prerelease }}
           draft: false
