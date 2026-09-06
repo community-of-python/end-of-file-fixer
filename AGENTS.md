@@ -1,10 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Commands
 
-See `Justfile` for recipes (`just --list`). Notes that aren't obvious from the recipes:
+See `justfile` for recipes (`just --list`). Notes that aren't obvious from the recipes:
 
 - `just lint` auto-fixes; `just lint-ci` is check-only (used in CI).
 - `just test` runs `uv run --no-sync pytest` with coverage always enabled; it
